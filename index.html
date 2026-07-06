@@ -613,11 +613,14 @@ async function doSignup() {
     email, password: pass,
     options: { data: { full_name: name } }
   });
-  console.log('Signup result:', signupData, error);
-  if (error) return showAuthError(error.message || error.status + ': ' + JSON.stringify(error));
-  $('auth-info').textContent = 'Account created! Check your email to verify, then sign in.';
-  $('auth-info').style.display = 'block';
-  $('auth-error').style.display = 'none';
+  if (error) return showAuthError(error.message || JSON.stringify(error));
+  // Auto sign in immediately after signup
+  const { error: loginErr } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (loginErr) {
+    $('auth-info').textContent = 'Account created! Now sign in with your credentials.';
+    $('auth-info').style.display = 'block';
+    $('auth-error').style.display = 'none';
+  }
 }
 
 async function doJoin() {
