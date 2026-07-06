@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f172a">
+<meta name="description" content="Household budget tracker — weekly cash flow, bills, goals">
+<title>ClearBudget</title>
+<link rel="manifest" href="data:application/json,{
+  &quot;name&quot;:&quot;ClearBudget&quot;,
+  &quot;short_name&quot;:&quot;ClearBudget&quot;,
+  &quot;start_url&quot;:&quot;/&quot;,
+  &quot;display&quot;:&quot;standalone&quot;,
+  &quot;background_color&quot;:&quot;#0f172a&quot;,
+  &quot;theme_color&quot;:&quot;#0f172a&quot;,
+  &quot;icons&quot;:[{&quot;src&quot;:&quot;data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2310b981'/><text y='.9em' font-size='75' x='12'>💰</text></svg>&quot;,&quot;sizes&quot;:&quot;any&quot;,&quot;type&quot;:&quot;image/svg+xml&quot;}]
+}">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f172a;--surface:#1e293b;--surface2:#273549;--border:#334155;
+  --text:#f1f5f9;--muted:#94a3b8;--faint:#475569;
+  --green:#10b981;--green-bg:#052e16;--green-dim:#065f46;
+  --red:#f87171;--red-bg:#2d0a0a;
+  --blue:#60a5fa;--blue-bg:#0d1f3c;
+  --amber:#fbbf24;--amber-bg:#2d1f00;
+  --purple:#a78bfa;--purple-bg:#1e1040;
+  --radius:10px;--rad-sm:6px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer;font-family:inherit;font-size:14px;border:none;outline:none}
+input,select,textarea{font-family:inherit;font-size:14px;outline:none;border:none}
+
+/* ── Layout ── */
+#app{display:flex;flex-direction:column;min-height:100vh}
+#auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem}
+.auth-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2rem;width:100%;max-width:400px}
+.auth-logo{font-size:28px;font-weight:700;color:var(--green);margin-bottom:.25rem}
+.auth-sub{color:var(--muted);font-size:14px;margin-bottom:1.75rem}
+.auth-tabs{display:flex;gap:4px;background:var(--bg);border-radius:var(--rad-sm);padding:3px;margin-bottom:1.5rem}
+.auth-tab{flex:1;padding:.5rem;border-radius:4px;text-align:center;font-size:13px;color:var(--muted);background:none;transition:.15s}
+.auth-tab.active{background:var(--surface2);color:var(--text);font-weight:500}
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:.35rem;font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.field input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--rad-sm);padding:.6rem .875rem;color:var(--text);transition:.15s}
+.field input:focus{border-color:var(--green)}
+.btn-primary{width:100%;background:var(--green);color:#fff;font-weight:600;padding:.7rem;border-radius:var(--rad-sm);font-size:15px;transition:.15s}
+.btn-primary:hover{background:#059669}
+.btn-primary:active{transform:scale(.98)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.auth-error{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:var(--rad-sm);padding:.6rem .875rem;font-size:13px;margin-bottom:1rem}
+.auth-info{background:var(--blue-bg);border:1px solid var(--blue);color:var(--blue);border-radius:var(--rad-sm);padding:.6rem .875rem;font-size:13px;margin-bottom:1rem}
+.divider{display:flex;align-items:center;gap:.75rem;color:var(--faint);font-size:12px;margin:1rem 0}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── Nav ── */
+#nav{background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:.75rem 1.25rem;position:sticky;top:0;z-index:100}
+.nav-logo{font-size:18px;font-weight:700;color:var(--green)}
+.nav-links{display:flex;gap:4px}
+.nav-btn{padding:.45rem .8rem;border-radius:var(--rad-sm);color:var(--muted);background:none;font-size:13px;font-weight:500;transition:.15s}
+.nav-btn.active{background:var(--surface2);color:var(--text)}
+.nav-btn:hover:not(.active){color:var(--text)}
+.nav-right{display:flex;align-items:center;gap:.5rem}
+.nav-user{font-size:12px;color:var(--faint)}
+.btn-ghost{background:none;color:var(--muted);font-size:12px;padding:.35rem .6rem;border-radius:4px;transition:.15s}
+.btn-ghost:hover{color:var(--text);background:var(--surface2)}
+
+/* ── Main content ── */
+#main{flex:1;padding:1.5rem;max-width:1000px;margin:0 auto;width:100%}
+.page{display:none}.page.active{display:block}
+
+/* ── Cards & containers ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem}
+.card+.card{margin-top:.75rem}
+.card-title{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:1rem}
+.section-title{font-size:18px;font-weight:600;margin-bottom:1.25rem}
+
+/* ── KPI grid ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem;margin-bottom:1.25rem}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem}
+.kpi-label{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.35rem}
+.kpi-val{font-size:24px;font-weight:700}
+.kpi-val.green{color:var(--green)}
+.kpi-val.red{color:var(--red)}
+.kpi-val.blue{color:var(--blue)}
+.kpi-val.amber{color:var(--amber)}
+.kpi-sub{font-size:11px;color:var(--faint);margin-top:.2rem}
+
+/* ── Budget table ── */
+.budget-table{width:100%;border-collapse:collapse;font-size:13px}
+.budget-table th{text-align:left;padding:.5rem .75rem;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.budget-table td{padding:.6rem .75rem;border-bottom:1px solid var(--border)}
+.budget-table tr:last-child td{border-bottom:none}
+.budget-table tr:hover td{background:var(--surface2)}
+.week-header td{background:var(--surface2);font-weight:600;font-size:12px;color:var(--muted)}
+.week-payday td{background:var(--green-bg);color:var(--green)}
+.week-total td{font-weight:600;background:var(--surface)}
+.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.tag-fixed{background:var(--blue-bg);color:var(--blue)}
+.tag-utility{background:var(--amber-bg);color:var(--amber)}
+.tag-weekly{background:var(--purple-bg);color:var(--purple)}
+.tag-payday{background:var(--green-bg);color:var(--green)}
+
+/* ── Month nav ── */
+.month-nav{display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem}
+.month-nav-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.4rem .75rem;border-radius:var(--rad-sm);font-size:18px;transition:.15s}
+.month-nav-btn:hover{border-color:var(--green);color:var(--green)}
+.month-label{font-size:18px;font-weight:700;flex:1}
+.month-sub{font-size:13px;color:var(--muted)}
+
+/* ── Forms ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.form-grid.three{grid-template-columns:1fr 1fr 1fr}
+.form-field{display:flex;flex-direction:column;gap:.35rem}
+.form-field label{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.form-field input,.form-field select{background:var(--bg);border:1px solid var(--border);border-radius:var(--rad-sm);padding:.55rem .75rem;color:var(--text);transition:.15s;width:100%}
+.form-field input:focus,.form-field select:focus{border-color:var(--green)}
+.form-field select option{background:var(--surface)}
+.btn-add{background:none;border:1px dashed var(--border);color:var(--muted);padding:.55rem 1rem;border-radius:var(--rad-sm);font-size:13px;transition:.15s;display:flex;align-items:center;gap:.4rem}
+.btn-add:hover{border-color:var(--green);color:var(--green)}
+.btn-save{background:var(--green);color:#fff;padding:.55rem 1.25rem;border-radius:var(--rad-sm);font-size:13px;font-weight:600;transition:.15s}
+.btn-save:hover{background:#059669}
+.btn-delete{background:none;color:var(--faint);padding:.3rem .5rem;border-radius:4px;font-size:16px;line-height:1;transition:.15s}
+.btn-delete:hover{color:var(--red);background:var(--red-bg)}
+.item-row{display:flex;align-items:center;gap:.6rem;padding:.6rem 0;border-bottom:1px solid var(--border)}
+.item-row:last-child{border-bottom:none}
+.item-name{flex:1;font-size:14px}
+.item-meta{font-size:12px;color:var(--muted)}
+.item-amount{font-weight:600;min-width:70px;text-align:right}
+
+/* ── Progress bar ── */
+.prog-wrap{margin:.5rem 0}
+.prog-bar{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.prog-fill{height:100%;border-radius:4px;transition:width .4s}
+
+/* ── Goal card ── */
+.goal-suggestion{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-top:1rem;font-size:14px;line-height:1.7;color:var(--text)}
+.goal-suggestion.loading{color:var(--muted);font-style:italic}
+.goal-goal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+
+/* ── Onboarding wizard ── */
+#onboarding{display:none;align-items:center;justify-content:center;min-height:80vh;padding:1rem}
+.wizard-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2rem;width:100%;max-width:540px}
+.wizard-step{display:none}.wizard-step.active{display:block}
+.wizard-title{font-size:20px;font-weight:700;margin-bottom:.35rem}
+.wizard-sub{font-size:14px;color:var(--muted);margin-bottom:1.5rem}
+.wizard-footer{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem}
+.step-dots{display:flex;gap:6px}
+.step-dot{width:8px;height:8px;border-radius:50%;background:var(--border)}
+.step-dot.active{background:var(--green)}
+.btn-next{background:var(--green);color:#fff;padding:.6rem 1.5rem;border-radius:var(--rad-sm);font-weight:600;font-size:14px;transition:.15s}
+.btn-next:hover{background:#059669}
+.btn-back{background:none;color:var(--muted);padding:.6rem 1rem;font-size:14px;transition:.15s}
+.btn-back:hover{color:var(--text)}
+.goal-option{display:flex;align-items:center;gap:.875rem;padding:.875rem;border:1px solid var(--border);border-radius:var(--rad-sm);margin-bottom:.5rem;cursor:pointer;transition:.15s}
+.goal-option:hover,.goal-option.selected{border-color:var(--green);background:var(--green-bg)}
+.goal-option-icon{font-size:24px}
+.goal-option-text{flex:1}
+.goal-option-title{font-weight:600;font-size:14px}
+.goal-option-desc{font-size:12px;color:var(--muted);margin-top:.15rem}
+
+/* ── Invite code ── */
+.invite-code{font-size:36px;font-weight:700;letter-spacing:.25em;color:var(--green);text-align:center;padding:1rem;background:var(--green-bg);border-radius:var(--rad-sm);margin:1rem 0}
+
+/* ── Responsive ── */
+@media(max-width:600px){
+  #main{padding:1rem .875rem}
+  .form-grid{grid-template-columns:1fr}
+  .form-grid.three{grid-template-columns:1fr 1fr}
+  .kpi-grid{grid-template-columns:1fr 1fr}
+  .nav-links{gap:2px}
+  .nav-btn{padding:.4rem .5rem;font-size:12px}
+}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(100px);background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.65rem 1.25rem;border-radius:20px;font-size:13px;transition:.3s;z-index:9999;white-space:nowrap}
+#toast.show{transform:translateX(-50%) translateY(0)}
+#toast.success{border-color:var(--green);color:var(--green)}
+#toast.error{border-color:var(--red);color:var(--red)}
+
+/* ── Spinner ── */
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Modal ── */
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;padding:1rem}
+.modal-backdrop.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:1.5rem;width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:1.25rem;display:flex;justify-content:space-between;align-items:center}
+.modal-actions{display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.25rem}
+.btn-cancel{background:none;color:var(--muted);padding:.55rem 1rem;border-radius:var(--rad-sm);font-size:13px;border:1px solid var(--border);transition:.15s}
+.btn-cancel:hover{color:var(--text)}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+<!-- ── AUTH ─────────────────────────────────────────── -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">ClearBudget</div>
+    <div class="auth-sub">Your household, on the same page.</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="authTab('login')">Sign in</button>
+      <button class="auth-tab" onclick="authTab('signup')">Create account</button>
+      <button class="auth-tab" onclick="authTab('join')">Join household</button>
+    </div>
+    <div id="auth-error" class="auth-error" style="display:none"></div>
+    <div id="auth-info" class="auth-info" style="display:none"></div>
+
+    <!-- Login -->
+    <div id="auth-login">
+      <div class="field"><label>Email</label><input type="email" id="l-email" placeholder="you@email.com"></div>
+      <div class="field"><label>Password</label><input type="password" id="l-pass" placeholder="••••••••"></div>
+      <button class="btn-primary" onclick="doLogin()">Sign in</button>
+    </div>
+
+    <!-- Signup -->
+    <div id="auth-signup" style="display:none">
+      <div class="field"><label>Full name</label><input type="text" id="s-name" placeholder="Jordan Smith"></div>
+      <div class="field"><label>Email</label><input type="email" id="s-email" placeholder="you@email.com"></div>
+      <div class="field"><label>Password</label><input type="password" id="s-pass" placeholder="Min 6 characters"></div>
+      <button class="btn-primary" onclick="doSignup()">Create account</button>
+    </div>
+
+    <!-- Join household -->
+    <div id="auth-join" style="display:none">
+      <div class="auth-info" style="display:block;margin-bottom:1rem">Your partner creates the account first, then shares a 6-digit invite code with you.</div>
+      <div class="field"><label>Email</label><input type="email" id="j-email" placeholder="you@email.com"></div>
+      <div class="field"><label>Password</label><input type="password" id="j-pass" placeholder="Min 6 characters"></div>
+      <div class="field"><label>Invite code</label><input type="text" id="j-code" placeholder="ABC123" maxlength="6" style="text-transform:uppercase;letter-spacing:.15em;font-size:20px;text-align:center"></div>
+      <button class="btn-primary" onclick="doJoin()">Join household</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ONBOARDING WIZARD ──────────────────────────────── -->
+<div id="onboarding" style="display:none">
+  <div class="wizard-card">
+    <div id="wiz-1" class="wizard-step active">
+      <div class="wizard-title">Welcome to ClearBudget 👋</div>
+      <div class="wizard-sub">Let's set up your household in a few quick steps. You can always update these later.</div>
+      <div class="form-field" style="margin-bottom:.75rem">
+        <label>Household name</label>
+        <input type="text" id="wiz-hname" placeholder="The Smith Family" value="">
+      </div>
+      <div class="wizard-footer">
+        <div class="step-dots">
+          <div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div>
+        </div>
+        <button class="btn-next" onclick="wizNext(2)">Continue →</button>
+      </div>
+    </div>
+
+    <div id="wiz-2" class="wizard-step">
+      <div class="wizard-title">Your income</div>
+      <div class="wizard-sub">Add your paycheck(s). Use biweekly if you get paid every other week.</div>
+      <div id="wiz-income-list"></div>
+      <button class="btn-add" onclick="wizAddIncome()" style="width:100%;margin-top:.5rem;justify-content:center">+ Add income source</button>
+      <div class="wizard-footer">
+        <div class="step-dots">
+          <div class="step-dot"></div><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div>
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn-back" onclick="wizBack(1)">← Back</button>
+          <button class="btn-next" onclick="wizNext(3)">Continue →</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="wiz-3" class="wizard-step">
+      <div class="wizard-title">Monthly bills</div>
+      <div class="wizard-sub">Add your recurring bills. Enter the day of month they're due.</div>
+      <div id="wiz-bills-list"></div>
+      <button class="btn-add" onclick="wizAddBill()" style="width:100%;margin-top:.5rem;justify-content:center">+ Add bill</button>
+      <div class="wizard-footer">
+        <div class="step-dots">
+          <div class="step-dot"></div><div class="step-dot"></div><div class="step-dot active"></div><div class="step-dot"></div>
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn-back" onclick="wizBack(2)">← Back</button>
+          <button class="btn-next" onclick="wizNext(4)">Continue →</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="wiz-4" class="wizard-step">
+      <div class="wizard-title">Your financial goal</div>
+      <div class="wizard-sub">What are you working toward right now? This helps ClearBudget give you smart suggestions.</div>
+      <div onclick="selectGoal('debt')" class="goal-option" id="goal-debt">
+        <div class="goal-option-icon">💳</div>
+        <div class="goal-option-text">
+          <div class="goal-option-title">Pay down debt</div>
+          <div class="goal-option-desc">Credit cards, student loans, car payments</div>
+        </div>
+      </div>
+      <div onclick="selectGoal('downpayment')" class="goal-option" id="goal-downpayment">
+        <div class="goal-option-icon">🏠</div>
+        <div class="goal-option-text">
+          <div class="goal-option-title">Save for a down payment</div>
+          <div class="goal-option-desc">Building toward a home purchase</div>
+        </div>
+      </div>
+      <div onclick="selectGoal('emergency')" class="goal-option" id="goal-emergency">
+        <div class="goal-option-icon">🛡️</div>
+        <div class="goal-option-text">
+          <div class="goal-option-title">Build an emergency fund</div>
+          <div class="goal-option-desc">3–6 months of expenses as a safety net</div>
+        </div>
+      </div>
+      <div onclick="selectGoal('invest')" class="goal-option" id="goal-invest">
+        <div class="goal-option-icon">📈</div>
+        <div class="goal-option-text">
+          <div class="goal-option-title">Start investing</div>
+          <div class="goal-option-desc">Roth IRA, 401k, brokerage account</div>
+        </div>
+      </div>
+      <div class="wizard-footer">
+        <div class="step-dots">
+          <div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot active"></div>
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn-back" onclick="wizBack(3)">← Back</button>
+          <button class="btn-next" onclick="finishOnboarding()">Finish setup →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MAIN APP ───────────────────────────────────────── -->
+<div id="main-app" style="display:none">
+  <nav id="nav">
+    <div class="nav-logo">ClearBudget</div>
+    <div class="nav-links">
+      <button class="nav-btn active" onclick="goPage('dashboard')">Dashboard</button>
+      <button class="nav-btn" onclick="goPage('budget')">Budget</button>
+      <button class="nav-btn" onclick="goPage('bills')">Bills</button>
+      <button class="nav-btn" onclick="goPage('goals')">Goals</button>
+      <button class="nav-btn" onclick="goPage('settings')">Settings</button>
+    </div>
+    <div class="nav-right">
+      <span class="nav-user" id="nav-user-name"></span>
+      <button class="btn-ghost" onclick="doSignout()">Sign out</button>
+    </div>
+  </nav>
+
+  <div id="main">
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard" class="page active">
+      <div class="kpi-grid" id="dash-kpis"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+        <div class="card" id="dash-nextpay"></div>
+        <div class="card" id="dash-goal-mini"></div>
+      </div>
+      <div class="card" style="margin-top:.75rem" id="dash-networth"></div>
+    </div>
+
+    <!-- BUDGET -->
+    <div id="page-budget" class="page">
+      <div class="month-nav">
+        <button class="month-nav-btn" onclick="changeMonth(-1)">‹</button>
+        <div>
+          <div class="month-label" id="budget-month-label"></div>
+          <div class="month-sub" id="budget-month-sub"></div>
+        </div>
+        <button class="month-nav-btn" onclick="changeMonth(1)">›</button>
+      </div>
+      <div class="kpi-grid" id="budget-kpis"></div>
+      <div class="card">
+        <div class="card-title">Week-by-week cash flow</div>
+        <div style="overflow-x:auto">
+          <table class="budget-table" id="budget-table">
+            <thead><tr>
+              <th>Week</th><th>Bills due</th><th>Weekly buckets</th><th>Additional exp.</th><th>Total out</th><th>Paycheck</th><th>Running balance</th>
+            </tr></thead>
+            <tbody id="budget-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:.75rem">
+        <div class="card-title">Bills this month</div>
+        <div id="budget-bills-list"></div>
+      </div>
+    </div>
+
+    <!-- BILLS -->
+    <div id="page-bills" class="page">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem">
+        <div class="section-title" style="margin:0">Bills & recurring expenses</div>
+        <button class="btn-save" onclick="openBillModal()">+ Add bill</button>
+      </div>
+      <div id="bills-list-container"></div>
+    </div>
+
+    <!-- GOALS -->
+    <div id="page-goals" class="page">
+      <div class="section-title">Financial goal</div>
+      <div class="card" id="goals-card">
+        <div id="goals-content"></div>
+      </div>
+      <div class="card" style="margin-top:.75rem">
+        <div class="card-title">Net worth snapshot</div>
+        <div id="networth-detail"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="page-settings" class="page">
+      <div class="section-title">Settings</div>
+      <div class="card">
+        <div class="card-title">Income sources</div>
+        <div id="settings-income"></div>
+        <button class="btn-add" onclick="openIncomeModal()" style="margin-top:.75rem">+ Add income source</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Weekly buckets</div>
+        <div id="settings-buckets"></div>
+        <button class="btn-add" onclick="openBucketModal()" style="margin-top:.75rem">+ Add weekly bucket</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Household</div>
+        <div id="settings-household"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<!-- ── MODALS ─────────────────────────────────────────── -->
+<div id="modal-bill" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="modal-bill-title">Add bill</span>
+      <button class="btn-ghost" onclick="closeModal('modal-bill')">✕</button>
+    </div>
+    <input type="hidden" id="bill-edit-id">
+    <div class="form-grid">
+      <div class="form-field" style="grid-column:1/-1">
+        <label>Bill name</label>
+        <input type="text" id="bill-name" placeholder="Mortgage, Netflix, etc.">
+      </div>
+      <div class="form-field">
+        <label>Amount ($)</label>
+        <input type="number" id="bill-amount" placeholder="0.00" step="0.01">
+      </div>
+      <div class="form-field">
+        <label>Due day of month</label>
+        <input type="number" id="bill-due-day" placeholder="1–31" min="1" max="31">
+      </div>
+      <div class="form-field">
+        <label>Category</label>
+        <select id="bill-category">
+          <option value="fixed">Fixed</option>
+          <option value="utility">Utility</option>
+          <option value="subscription">Subscription</option>
+          <option value="insurance">Insurance</option>
+          <option value="debt-payment">Debt payment</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Starts (month)</label>
+        <input type="month" id="bill-start">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-bill')">Cancel</button>
+      <button class="btn-save" onclick="saveBill()">Save bill</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-income" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Income source</span>
+      <button class="btn-ghost" onclick="closeModal('modal-income')">✕</button>
+    </div>
+    <input type="hidden" id="income-edit-id">
+    <div class="form-grid">
+      <div class="form-field" style="grid-column:1/-1">
+        <label>Name</label>
+        <input type="text" id="income-name" placeholder="My Paycheck">
+      </div>
+      <div class="form-field">
+        <label>Amount ($)</label>
+        <input type="number" id="income-amount" placeholder="0.00" step="0.01">
+      </div>
+      <div class="form-field">
+        <label>Frequency</label>
+        <select id="income-freq">
+          <option value="biweekly">Biweekly</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="twice-monthly">Twice a month</option>
+        </select>
+      </div>
+      <div class="form-field" style="grid-column:1/-1">
+        <label>First / next pay date</label>
+        <input type="date" id="income-paydate">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-income')">Cancel</button>
+      <button class="btn-save" onclick="saveIncome()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-bucket" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Weekly bucket</span>
+      <button class="btn-ghost" onclick="closeModal('modal-bucket')">✕</button>
+    </div>
+    <input type="hidden" id="bucket-edit-id">
+    <div class="form-grid">
+      <div class="form-field" style="grid-column:1/-1">
+        <label>Name</label>
+        <input type="text" id="bucket-name" placeholder="Daycare, Gas, MISC">
+      </div>
+      <div class="form-field" style="grid-column:1/-1">
+        <label>Weekly amount ($)</label>
+        <input type="number" id="bucket-amount" placeholder="0.00" step="0.01">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modal-bucket')">Cancel</button>
+      <button class="btn-save" onclick="saveBucket()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── CONFIG — swap these for your Supabase project ──────────
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+// ───────────────────────────────────────────────────────────
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── State ──────────────────────────────────────────────────
+let STATE = {
+  user: null,
+  profile: null,
+  householdId: null,
+  income: [],
+  bills: [],
+  billOverrides: {},
+  buckets: [],
+  snapshot: null,
+  currentMonth: new Date().getFullYear() * 100 + (new Date().getMonth() + 1),
+};
+
+// ── Helpers ────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function fmt(n) { return '$' + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function fmtInt(n) { return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString(); }
+function monthStr(ym) {
+  const y = Math.floor(ym / 100), m = ym % 100;
+  return `${y}-${String(m).padStart(2,'0')}`;
+}
+function monthLabel(ym) {
+  const y = Math.floor(ym / 100), m = ym % 100;
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+function toast(msg, type = '') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  setTimeout(() => { t.className = ''; }, 2800);
+}
+function openModal(id) { $(id).classList.add('open'); }
+function closeModal(id) { $(id).classList.remove('open'); }
+
+// ── Auth ───────────────────────────────────────────────────
+function authTab(tab) {
+  $('auth-login').style.display = tab === 'login' ? 'block' : 'none';
+  $('auth-signup').style.display = tab === 'signup' ? 'block' : 'none';
+  $('auth-join').style.display = tab === 'join' ? 'block' : 'none';
+  document.querySelectorAll('.auth-tab').forEach((b, i) => {
+    b.classList.toggle('active', ['login','signup','join'][i] === tab);
+  });
+  $('auth-error').style.display = 'none';
+  $('auth-info').style.display = 'none';
+}
+
+function showAuthError(msg) {
+  $('auth-error').textContent = msg;
+  $('auth-error').style.display = 'block';
+  $('auth-info').style.display = 'none';
+}
+
+async function doLogin() {
+  const email = $('l-email').value.trim();
+  const pass = $('l-pass').value;
+  if (!email || !pass) return showAuthError('Please fill in all fields.');
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) showAuthError(error.message);
+}
+
+async function doSignup() {
+  const name = $('s-name').value.trim();
+  const email = $('s-email').value.trim();
+  const pass = $('s-pass').value;
+  if (!name || !email || !pass) return showAuthError('Please fill in all fields.');
+  if (pass.length < 6) return showAuthError('Password must be at least 6 characters.');
+  const { error } = await sb.auth.signUp({
+    email, password: pass,
+    options: { data: { full_name: name } }
+  });
+  if (error) return showAuthError(error.message);
+  $('auth-info').textContent = 'Account created! Check your email to verify, then sign in.';
+  $('auth-info').style.display = 'block';
+  $('auth-error').style.display = 'none';
+}
+
+async function doJoin() {
+  const email = $('j-email').value.trim();
+  const pass = $('j-pass').value;
+  const code = $('j-code').value.trim().toUpperCase();
+  if (!email || !pass || !code) return showAuthError('Please fill in all fields.');
+
+  // Check invite code
+  const { data: invite, error: ie } = await sb
+    .from('household_invites')
+    .select('*')
+    .eq('code', code)
+    .is('used_by', null)
+    .gt('expires_at', new Date().toISOString())
+    .single();
+
+  if (ie || !invite) return showAuthError('Invalid or expired invite code.');
+
+  // Sign up (creates profile via trigger)
+  const { error } = await sb.auth.signUp({
+    email, password: pass,
+    options: { data: { full_name: email.split('@')[0], invite_code: code } }
+  });
+  if (error) return showAuthError(error.message);
+  $('auth-info').textContent = 'Account created! Verify your email, then sign in to join the household.';
+  $('auth-info').style.display = 'block';
+  $('auth-error').style.display = 'none';
+}
+
+async function doSignout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+// ── Boot: auth state listener ──────────────────────────────
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (session?.user) {
+    STATE.user = session.user;
+    await loadUserData();
+  } else {
+    showAuthGate();
+  }
+});
+
+function showAuthGate() {
+  $('auth-screen').style.display = 'flex';
+  $('onboarding').style.display = 'none';
+  $('main-app').style.display = 'none';
+}
+
+async function loadUserData() {
+  // Load profile
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', STATE.user.id).single();
+  STATE.profile = profile;
+
+  if (!profile?.household_id) {
+    // New user — start onboarding
+    showOnboarding();
+    return;
+  }
+
+  STATE.householdId = profile.household_id;
+
+  // Check if invite code pending from join flow
+  const inviteCode = STATE.user.user_metadata?.invite_code;
+  if (inviteCode && !profile.household_id) {
+    await applyInviteCode(inviteCode);
+    return;
+  }
+
+  await loadAllData();
+  showMainApp();
+}
+
+async function applyInviteCode(code) {
+  const { data: invite } = await sb
+    .from('household_invites')
+    .select('*')
+    .eq('code', code)
+    .is('used_by', null)
+    .single();
+
+  if (!invite) { showOnboarding(); return; }
+
+  // Join household
+  await sb.from('profiles').update({ household_id: invite.household_id }).eq('id', STATE.user.id);
+  await sb.from('household_invites').update({ used_by: STATE.user.id, used_at: new Date().toISOString() }).eq('id', invite.id);
+
+  STATE.householdId = invite.household_id;
+  await loadAllData();
+  showMainApp();
+  toast('Joined household!', 'success');
+}
+
+async function loadAllData() {
+  const hid = STATE.householdId;
+  const [inc, bills, overrides, buckets, snap] = await Promise.all([
+    sb.from('income_sources').select('*').eq('household_id', hid).eq('is_active', true).order('created_at'),
+    sb.from('bills').select('*').eq('household_id', hid).eq('is_active', true).order('due_day'),
+    sb.from('bill_overrides').select('*').eq('household_id', hid),
+    sb.from('weekly_buckets').select('*').eq('household_id', hid).eq('is_active', true).order('sort_order'),
+    sb.from('financial_snapshot').select('*').eq('household_id', hid).maybeSingle(),
+  ]);
+  STATE.income = inc.data || [];
+  STATE.bills = bills.data || [];
+  STATE.billOverrides = {};
+  (overrides.data || []).forEach(o => { STATE.billOverrides[`${o.bill_id}_${o.month}`] = o; });
+  STATE.buckets = buckets.data || [];
+  STATE.snapshot = snap.data || null;
+}
+
+function showMainApp() {
+  $('auth-screen').style.display = 'none';
+  $('onboarding').style.display = 'none';
+  $('main-app').style.display = 'block';
+  $('nav-user-name').textContent = STATE.profile?.full_name || STATE.user.email;
+  renderDashboard();
+}
+
+// ── Onboarding wizard ──────────────────────────────────────
+let wizData = { income: [], bills: [], goal: 'debt' };
+let wizIncomeIdx = 0, wizBillIdx = 0;
+
+function showOnboarding() {
+  $('auth-screen').style.display = 'none';
+  $('main-app').style.display = 'none';
+  $('onboarding').style.display = 'flex';
+  wizAddIncome();
+  wizAddBill();
+}
+
+function wizNext(step) {
+  document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
+  $('wiz-' + step).classList.add('active');
+}
+function wizBack(step) { wizNext(step); }
+
+function wizAddIncome() {
+  const idx = wizIncomeIdx++;
+  wizData.income.push({ name: '', amount: 0, freq: 'biweekly', paydate: '' });
+  const list = $('wiz-income-list');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.75rem;padding:.75rem;background:var(--bg);border-radius:var(--rad-sm)';
+  div.innerHTML = `
+    <div class="form-field"><label>Name</label><input type="text" placeholder="My Paycheck" oninput="wizData.income[${idx}].name=this.value"></div>
+    <div class="form-field"><label>Amount ($)</label><input type="number" placeholder="1700.00" step="0.01" oninput="wizData.income[${idx}].amount=+this.value"></div>
+    <div class="form-field"><label>Frequency</label><select onchange="wizData.income[${idx}].freq=this.value"><option value="biweekly">Biweekly</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+    <div class="form-field"><label>First pay date</label><input type="date" oninput="wizData.income[${idx}].paydate=this.value"></div>
+  `;
+  list.appendChild(div);
+}
+
+function wizAddBill() {
+  const idx = wizBillIdx++;
+  wizData.bills.push({ name: '', amount: 0, due_day: 1, category: 'fixed' });
+  const list = $('wiz-bills-list');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:grid;grid-template-columns:1fr 80px 100px;gap:.5rem;margin-bottom:.5rem;align-items:end';
+  div.innerHTML = `
+    <div class="form-field"><label>Bill name</label><input type="text" placeholder="Mortgage" oninput="wizData.bills[${idx}].name=this.value"></div>
+    <div class="form-field"><label>Amount</label><input type="number" placeholder="1200" oninput="wizData.bills[${idx}].amount=+this.value"></div>
+    <div class="form-field"><label>Due day</label><input type="number" min="1" max="31" placeholder="1" oninput="wizData.bills[${idx}].due_day=+this.value"></div>
+  `;
+  list.appendChild(div);
+}
+
+function selectGoal(g) {
+  wizData.goal = g;
+  document.querySelectorAll('.goal-option').forEach(el => el.classList.remove('selected'));
+  $('goal-' + g).classList.add('selected');
+}
+
+async function finishOnboarding() {
+  const hname = $('wiz-hname').value.trim() || 'My Household';
+
+  // 1. Create household
+  const { data: hh } = await sb.from('households').insert({ name: hname }).select().single();
+  const hid = hh.id;
+
+  // 2. Update profile
+  await sb.from('profiles').update({ household_id: hid, role: 'owner' }).eq('id', STATE.user.id);
+  STATE.householdId = hid;
+
+  // 3. Insert income
+  const validIncome = wizData.income.filter(i => i.name && i.amount > 0 && i.paydate);
+  if (validIncome.length) {
+    await sb.from('income_sources').insert(validIncome.map(i => ({
+      household_id: hid, name: i.name, amount: i.amount,
+      frequency: i.freq, first_pay_date: i.paydate
+    })));
+  }
+
+  // 4. Insert bills
+  const validBills = wizData.bills.filter(b => b.name && b.amount > 0 && b.due_day);
+  if (validBills.length) {
+    await sb.from('bills').insert(validBills.map(b => ({
+      household_id: hid, name: b.name, amount: b.amount,
+      due_day: b.due_day, category: b.category, is_recurring: true
+    })));
+  }
+
+  // 5. Default weekly buckets
+  await sb.from('weekly_buckets').insert([
+    { household_id: hid, name: 'Daycare', weekly_amount: 175, sort_order: 1 },
+    { household_id: hid, name: 'Gas & Groceries', weekly_amount: 350, sort_order: 2 },
+    { household_id: hid, name: 'MISC', weekly_amount: 100, sort_order: 3 },
+  ]);
+
+  // 6. Create snapshot with goal
+  await sb.from('financial_snapshot').insert({
+    household_id: hid, primary_goal: wizData.goal, onboarding_complete: true
+  });
+
+  await loadAllData();
+  showMainApp();
+  toast('Setup complete! Welcome to ClearBudget.', 'success');
+}
+
+// ── Budget engine ──────────────────────────────────────────
+function getPayDates(source, year, month) {
+  // Returns all pay dates for an income source within a given month
+  const dates = [];
+  const freq = source.frequency;
+  const firstPay = new Date(source.first_pay_date + 'T12:00:00');
+
+  if (freq === 'monthly') {
+    const d = new Date(year, month - 1, firstPay.getDate());
+    if (d.getMonth() === month - 1) dates.push(d);
+    return dates;
+  }
+
+  const msPerPeriod = freq === 'weekly' ? 7 * 86400000 :
+                      freq === 'biweekly' ? 14 * 86400000 : null;
+
+  if (freq === 'twice-monthly') {
+    // 1st and 15th, or 15th and last day
+    const d1 = new Date(year, month - 1, 1);
+    const d2 = new Date(year, month - 1, 15);
+    return [d1, d2].filter(d => d.getMonth() === month - 1);
+  }
+
+  if (msPerPeriod) {
+    // Walk forward from firstPay until we pass end of month
+    const startOfMonth = new Date(year, month - 1, 1);
+    const endOfMonth = new Date(year, month, 0);
+
+    // Find first occurrence in or before start of month
+    let cursor = new Date(firstPay);
+    while (cursor > startOfMonth) cursor = new Date(cursor - msPerPeriod);
+    while (cursor < startOfMonth) cursor = new Date(+cursor + msPerPeriod);
+
+    while (cursor <= endOfMonth) {
+      if (cursor.getMonth() === month - 1) dates.push(new Date(cursor));
+      cursor = new Date(+cursor + msPerPeriod);
+    }
+  }
+  return dates;
+}
+
+function getWeeksInMonth(year, month) {
+  // Returns week ranges covering the month (Sun–Sat buckets that touch this month)
+  const weeks = [];
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+
+  // Find the Sunday on or before the 1st
+  let weekStart = new Date(firstDay);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+
+  while (weekStart <= lastDay) {
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weeks.push({ start: new Date(weekStart), end: new Date(weekEnd) });
+    weekStart.setDate(weekStart.getDate() + 7);
+  }
+  return weeks;
+}
+
+function getBillsForWeek(bills, overrides, weekStart, weekEnd, monthStr) {
+  return bills.filter(b => {
+    // Check if bill is active this month
+    if (b.start_month && b.start_month > monthStr) return false;
+    if (b.end_month && b.end_month < monthStr) return false;
+
+    const key = `${b.id}_${monthStr}`;
+    if (overrides[key] && overrides[key].amount === null) return false; // skipped
+
+    const dueDate = new Date(
+      parseInt(monthStr.split('-')[0]),
+      parseInt(monthStr.split('-')[1]) - 1,
+      b.due_day
+    );
+    return dueDate >= weekStart && dueDate <= weekEnd;
+  });
+}
+
+function calcMonthBudget(ym) {
+  const year = Math.floor(ym / 100);
+  const month = ym % 100;
+  const ms = monthStr(ym);
+  const weeks = getWeeksInMonth(year, month);
+  const weeklyBucketTotal = STATE.buckets.reduce((a, b) => a + parseFloat(b.weekly_amount), 0);
+
+  let runningBalance = 0;
+  const weekRows = [];
+
+  weeks.forEach(({ start, end }) => {
+    const weekBills = getBillsForWeek(STATE.bills, STATE.billOverrides, start, end, ms);
+    const billsTotal = weekBills.reduce((a, b) => {
+      const key = `${b.id}_${ms}`;
+      const amt = STATE.billOverrides[key]?.amount ?? b.amount;
+      return a + parseFloat(amt);
+    }, 0);
+
+    // Paychecks landing this week
+    const paychecks = [];
+    STATE.income.forEach(src => {
+      getPayDates(src, year, month).forEach(pd => {
+        if (pd >= start && pd <= end) {
+          paychecks.push({ name: src.name, amount: parseFloat(src.amount), date: pd });
+        }
+      });
+    });
+    const paycheckTotal = paychecks.reduce((a, p) => a + p.amount, 0);
+
+    const totalOut = billsTotal + weeklyBucketTotal;
+    runningBalance += paycheckTotal - totalOut;
+
+    const startDay = start.getDate();
+    const endDay = end.getDate();
+    const startM = start.getMonth() + 1;
+    const endM = end.getMonth() + 1;
+
+    weekRows.push({
+      label: startM !== month ? `${startDay} – ${endDay}` :
+             endM !== month ? `${startDay} – ${endDay}` :
+             `${startDay}th – ${endDay}th`,
+      billsTotal,
+      weeklyBuckets: weeklyBucketTotal,
+      totalOut,
+      paychecks,
+      paycheckTotal,
+      runningBalance,
+      bills: weekBills,
+    });
+  });
+
+  const totalIncome = weekRows.reduce((a, w) => a + w.paycheckTotal, 0);
+  const totalBills = weekRows.reduce((a, w) => a + w.billsTotal, 0);
+  const totalBuckets = weeklyBucketTotal * weeks.length;
+  const netSavings = runningBalance;
+
+  return { weekRows, totalIncome, totalBills, totalBuckets, netSavings, weeklyBucketTotal };
+}
+
+// ── Dashboard ──────────────────────────────────────────────
+function renderDashboard() {
+  const ym = STATE.currentMonth;
+  const { totalIncome, totalBills, totalBuckets, netSavings } = calcMonthBudget(ym);
+
+  $('dash-kpis').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Monthly income</div><div class="kpi-val green">${fmtInt(totalIncome)}</div><div class="kpi-sub">${monthLabel(ym)}</div></div>
+    <div class="kpi"><div class="kpi-label">Monthly bills</div><div class="kpi-val red">${fmtInt(totalBills)}</div></div>
+    <div class="kpi"><div class="kpi-label">Weekly buckets</div><div class="kpi-val amber">${fmtInt(totalBuckets)}</div></div>
+    <div class="kpi"><div class="kpi-label">Projected net savings</div><div class="kpi-val ${netSavings >= 0 ? 'green' : 'red'}">${fmtInt(netSavings)}</div></div>
+  `;
+
+  // Next paycheck
+  const today = new Date();
+  let nextPay = null, nextPayName = '';
+  STATE.income.forEach(src => {
+    const yr = today.getFullYear(), mo = today.getMonth() + 1;
+    [mo, mo + 1].forEach(m => {
+      const y = m > 12 ? yr + 1 : yr;
+      const mm = m > 12 ? m - 12 : m;
+      getPayDates(src, y, mm).forEach(pd => {
+        if (pd > today && (!nextPay || pd < nextPay)) {
+          nextPay = pd; nextPayName = src.name;
+        }
+      });
+    });
+  });
+
+  const daysUntil = nextPay ? Math.ceil((nextPay - today) / 86400000) : null;
+  $('dash-nextpay').innerHTML = `
+    <div class="card-title">Next paycheck</div>
+    ${nextPay ? `
+      <div style="font-size:28px;font-weight:700;color:var(--green)">${daysUntil === 0 ? 'Today!' : daysUntil + ' days'}</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:.25rem">${nextPayName} · ${nextPay.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+    ` : '<div style="color:var(--muted);font-size:13px">No income sources set up yet.</div>'}
+  `;
+
+  // Goal mini
+  const goal = STATE.snapshot?.primary_goal || 'debt';
+  const goalLabels = { debt: '💳 Pay down debt', downpayment: '🏠 Down payment', emergency: '🛡️ Emergency fund', invest: '📈 Investing' };
+  $('dash-goal-mini').innerHTML = `
+    <div class="card-title">Current goal</div>
+    <div style="font-size:16px;font-weight:600;margin-bottom:.5rem">${goalLabels[goal] || 'Set a goal'}</div>
+    <div style="font-size:13px;color:var(--muted)">Monthly savings available: <span style="color:var(--green);font-weight:600">${fmtInt(Math.max(0, netSavings))}</span></div>
+    <button class="btn-add" onclick="goPage('goals')" style="margin-top:.75rem;width:100%;justify-content:center">Get AI suggestion ↗</button>
+  `;
+
+  // Net worth
+  renderNetworthCard('dash-networth');
+}
+
+function renderNetworthCard(containerId) {
+  const s = STATE.snapshot;
+  if (!s) { $(containerId).innerHTML = '<div class="card-title">Net worth</div><div style="color:var(--muted);font-size:13px">Complete your financial snapshot in Goals.</div>'; return; }
+
+  const totalDebt = (s.credit_card_balance || 0) + (s.student_loan_balance || 0) +
+    (s.car_loan_balance || 0) + (s.mortgage_balance || 0) + (s.other_debt_balance || 0);
+  const totalAssets = (s.checking_balance || 0) + (s.savings_balance || 0) +
+    (s.investment_balance || 0) + (s.home_equity || 0) + (s.other_assets || 0);
+  const netWorth = totalAssets - totalDebt;
+
+  $(containerId).innerHTML = `
+    <div class="card-title">Net worth</div>
+    <div style="display:flex;align-items:baseline;gap:.75rem;margin-bottom:.75rem">
+      <div style="font-size:32px;font-weight:700;color:${netWorth >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtInt(netWorth)}</div>
+      <div style="font-size:13px;color:var(--muted)">assets minus debts</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;font-size:13px">
+      <div style="color:var(--muted)">Total assets</div><div style="color:var(--green);font-weight:600;text-align:right">${fmtInt(totalAssets)}</div>
+      <div style="color:var(--muted)">Total debt</div><div style="color:var(--red);font-weight:600;text-align:right">${fmtInt(totalDebt)}</div>
+    </div>
+  `;
+}
+
+// ── Budget page ────────────────────────────────────────────
+function renderBudget() {
+  const ym = STATE.currentMonth;
+  $('budget-month-label').textContent = monthLabel(ym);
+  const today = new Date();
+  const isCurrentMonth = Math.floor(ym / 100) === today.getFullYear() && ym % 100 === (today.getMonth() + 1);
+  $('budget-month-sub').textContent = isCurrentMonth ? 'Current month' : '';
+
+  const { weekRows, totalIncome, totalBills, totalBuckets, netSavings, weeklyBucketTotal } = calcMonthBudget(ym);
+
+  $('budget-kpis').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Total income</div><div class="kpi-val green">${fmtInt(totalIncome)}</div></div>
+    <div class="kpi"><div class="kpi-label">Fixed bills</div><div class="kpi-val red">${fmtInt(totalBills)}</div></div>
+    <div class="kpi"><div class="kpi-label">Weekly buckets</div><div class="kpi-val amber">${fmtInt(totalBuckets)}</div></div>
+    <div class="kpi"><div class="kpi-label">Net savings</div><div class="kpi-val ${netSavings >= 0 ? 'green' : 'red'}">${fmtInt(netSavings)}</div></div>
+  `;
+
+  const tbody = $('budget-tbody');
+  tbody.innerHTML = '';
+  weekRows.forEach(row => {
+    const billNames = row.bills.map(b => b.name).join(', ') || '—';
+    const bucketNames = STATE.buckets.map(b => b.name + ' ' + fmt(b.weekly_amount)).join(', ') || '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:600">${row.label}</td>
+      <td><span style="font-size:12px;color:var(--muted)">${billNames}</span><br><span style="font-weight:600;color:var(--red)">${fmtInt(row.billsTotal)}</span></td>
+      <td><span style="font-size:11px;color:var(--muted)">${bucketNames}</span><br><span style="font-weight:600;color:var(--amber)">${fmtInt(row.weeklyBuckets)}</span></td>
+      <td style="color:var(--muted)">${fmtInt(row.weeklyBuckets)}</td>
+      <td style="font-weight:600;color:var(--red)">${fmtInt(row.totalOut)}</td>
+      <td>${row.paychecks.length ? row.paychecks.map(p => `<span style="color:var(--green);font-weight:600">${fmtInt(p.amount)}</span><span style="font-size:11px;color:var(--muted)"> ${p.name}</span>`).join('<br>') : '<span style="color:var(--faint)">—</span>'}</td>
+      <td style="font-weight:700;color:${row.runningBalance >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtInt(row.runningBalance)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Bills list
+  const ms = monthStr(ym);
+  const monthBills = STATE.bills.filter(b => {
+    if (b.start_month && b.start_month > ms) return false;
+    if (b.end_month && b.end_month < ms) return false;
+    const key = `${b.id}_${ms}`;
+    return !(STATE.billOverrides[key] && STATE.billOverrides[key].amount === null);
+  });
+
+  $('budget-bills-list').innerHTML = monthBills.length ? monthBills.map(b => {
+    const key = `${b.id}_${ms}`;
+    const amt = STATE.billOverrides[key]?.amount ?? b.amount;
+    return `<div class="item-row">
+      <div class="item-name">${b.name}</div>
+      <div class="item-meta">Due ${b.due_day}${['st','nd','rd'][b.due_day-1]||'th'}</div>
+      <span class="tag tag-${b.category}">${b.category}</span>
+      <div class="item-amount">${fmt(amt)}</div>
+    </div>`;
+  }).join('') : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0">No bills this month.</div>';
+}
+
+function changeMonth(delta) {
+  let y = Math.floor(STATE.currentMonth / 100);
+  let m = STATE.currentMonth % 100 + delta;
+  if (m > 12) { m = 1; y++; }
+  if (m < 1) { m = 12; y--; }
+  STATE.currentMonth = y * 100 + m;
+  renderBudget();
+}
+
+// ── Bills page ─────────────────────────────────────────────
+function renderBillsPage() {
+  const container = $('bills-list-container');
+  if (!STATE.bills.length) {
+    container.innerHTML = `<div class="card"><div style="color:var(--muted);font-size:14px;padding:.5rem 0">No bills yet. Add your first one!</div></div>`;
+    return;
+  }
+
+  const sorted = [...STATE.bills].sort((a, b) => a.due_day - b.due_day);
+  container.innerHTML = `<div class="card">${sorted.map(b => `
+    <div class="item-row">
+      <div>
+        <div class="item-name">${b.name}</div>
+        <div class="item-meta">Due ${b.due_day}${['st','nd','rd'][b.due_day-1]||'th'} · ${b.is_recurring ? 'Recurring' : 'One-time'}${b.start_month ? ' · Starts ' + b.start_month : ''}</div>
+      </div>
+      <span class="tag tag-${b.category}">${b.category}</span>
+      <div class="item-amount">${fmt(b.amount)}</div>
+      <button class="btn-delete" onclick="editBill('${b.id}')">✏️</button>
+      <button class="btn-delete" onclick="deleteBill('${b.id}')">🗑</button>
+    </div>
+  `).join('')}</div>`;
+}
+
+function openBillModal(id) {
+  $('bill-edit-id').value = '';
+  $('bill-name').value = '';
+  $('bill-amount').value = '';
+  $('bill-due-day').value = '';
+  $('bill-category').value = 'fixed';
+  $('bill-start').value = '';
+  $('modal-bill-title').textContent = 'Add bill';
+  openModal('modal-bill');
+}
+
+function editBill(id) {
+  const b = STATE.bills.find(x => x.id === id);
+  if (!b) return;
+  $('bill-edit-id').value = id;
+  $('bill-name').value = b.name;
+  $('bill-amount').value = b.amount;
+  $('bill-due-day').value = b.due_day;
+  $('bill-category').value = b.category;
+  $('bill-start').value = b.start_month || '';
+  $('modal-bill-title').textContent = 'Edit bill';
+  openModal('modal-bill');
+}
+
+async function saveBill() {
+  const id = $('bill-edit-id').value;
+  const data = {
+    household_id: STATE.householdId,
+    name: $('bill-name').value.trim(),
+    amount: parseFloat($('bill-amount').value) || 0,
+    due_day: parseInt($('bill-due-day').value) || 1,
+    category: $('bill-category').value,
+    start_month: $('bill-start').value || null,
+    is_recurring: true,
+  };
+  if (!data.name || !data.amount) return toast('Fill in name and amount.', 'error');
+
+  if (id) {
+    await sb.from('bills').update(data).eq('id', id);
+  } else {
+    await sb.from('bills').insert(data);
+  }
+
+  await loadAllData();
+  renderBillsPage();
+  closeModal('modal-bill');
+  toast('Bill saved.', 'success');
+}
+
+async function deleteBill(id) {
+  if (!confirm('Remove this bill?')) return;
+  await sb.from('bills').update({ is_active: false }).eq('id', id);
+  await loadAllData();
+  renderBillsPage();
+  toast('Bill removed.');
+}
+
+// ── Goals page ─────────────────────────────────────────────
+async function renderGoalsPage() {
+  const s = STATE.snapshot;
+  const goal = s?.primary_goal || 'debt';
+  const { netSavings } = calcMonthBudget(STATE.currentMonth);
+
+  const goalLabels = {
+    debt: '💳 Pay down debt',
+    downpayment: '🏠 Save for a down payment',
+    emergency: '🛡️ Build an emergency fund',
+    invest: '📈 Start investing'
+  };
+
+  $('goals-content').innerHTML = `
+    <div class="goal-goal-header">
+      <div>
+        <div style="font-size:18px;font-weight:700">${goalLabels[goal] || 'Set a goal'}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:.2rem">Monthly savings available: <span style="color:var(--green);font-weight:600">${fmtInt(Math.max(0, netSavings))}</span></div>
+      </div>
+      <button class="btn-save" onclick="changeGoal()">Change goal</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem">
+      ${renderSnapshotInputs(s)}
+    </div>
+    <button class="btn-save" onclick="saveSnapshot()" style="width:100%;margin-bottom:.5rem">Save financial snapshot</button>
+    <button class="btn-add" onclick="getAISuggestion()" style="width:100%;justify-content:center;background:var(--purple-bg);border-color:var(--purple);color:var(--purple)">✨ Get AI suggestion ↗</button>
+    <div id="ai-suggestion-box" class="goal-suggestion" style="display:none"></div>
+  `;
+
+  renderNetworthDetail();
+}
+
+function renderSnapshotInputs(s) {
+  const f = (label, field, val) =>
+    `<div class="form-field"><label>${label}</label><input type="number" step="0.01" placeholder="0.00" id="snap-${field}" value="${val || ''}"></div>`;
+  return `
+    <div style="grid-column:1/-1;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;padding-top:.25rem">💰 Assets</div>
+    ${f('Checking balance','checking', s?.checking_balance)}
+    ${f('Savings balance','savings', s?.savings_balance)}
+    ${f('Investments','investments', s?.investment_balance)}
+    ${f('Home equity','equity', s?.home_equity)}
+    <div style="grid-column:1/-1;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;padding-top:.5rem">🔴 Debts</div>
+    ${f('Credit card balance','cc', s?.credit_card_balance)}
+    ${f('Credit card APR (%)','cc-apr', s?.credit_card_apr)}
+    ${f('Student loans','student', s?.student_loan_balance)}
+    ${f('Car loan','car', s?.car_loan_balance)}
+    ${f('Mortgage balance','mortgage', s?.mortgage_balance)}
+    ${f('Other debt','other-debt', s?.other_debt_balance)}
+  `;
+}
+
+async function saveSnapshot() {
+  const data = {
+    household_id: STATE.householdId,
+    checking_balance: parseFloat($('snap-checking')?.value) || 0,
+    savings_balance: parseFloat($('snap-savings')?.value) || 0,
+    investment_balance: parseFloat($('snap-investments')?.value) || 0,
+    home_equity: parseFloat($('snap-equity')?.value) || 0,
+    credit_card_balance: parseFloat($('snap-cc')?.value) || 0,
+    credit_card_apr: parseFloat($('snap-cc-apr')?.value) || 0,
+    student_loan_balance: parseFloat($('snap-student')?.value) || 0,
+    car_loan_balance: parseFloat($('snap-car')?.value) || 0,
+    mortgage_balance: parseFloat($('snap-mortgage')?.value) || 0,
+    other_debt_balance: parseFloat($('snap-other-debt')?.value) || 0,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (STATE.snapshot?.id) {
+    await sb.from('financial_snapshot').update(data).eq('id', STATE.snapshot.id);
+  } else {
+    await sb.from('financial_snapshot').insert({ ...data, primary_goal: 'debt', onboarding_complete: true });
+  }
+
+  await loadAllData();
+  renderNetworthDetail();
+  toast('Snapshot saved.', 'success');
+}
+
+function renderNetworthDetail() {
+  const s = STATE.snapshot;
+  if (!s) { $('networth-detail').innerHTML = '<div style="color:var(--muted);font-size:13px">Save your snapshot above to see net worth.</div>'; return; }
+
+  const rows = [
+    ['Checking', s.checking_balance, 'asset'],
+    ['Savings', s.savings_balance, 'asset'],
+    ['Investments', s.investment_balance, 'asset'],
+    ['Home equity', s.home_equity, 'asset'],
+    ['Credit cards', s.credit_card_balance, 'debt'],
+    ['Student loans', s.student_loan_balance, 'debt'],
+    ['Car loan', s.car_loan_balance, 'debt'],
+    ['Mortgage', s.mortgage_balance, 'debt'],
+    ['Other debt', s.other_debt_balance, 'debt'],
+  ].filter(([, v]) => v > 0);
+
+  const totalAssets = rows.filter(r => r[2] === 'asset').reduce((a, r) => a + r[1], 0);
+  const totalDebt = rows.filter(r => r[2] === 'debt').reduce((a, r) => a + r[1], 0);
+  const netWorth = totalAssets - totalDebt;
+
+  $('networth-detail').innerHTML = `
+    ${rows.map(([label, val, type]) => `
+      <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:.5px solid var(--border);font-size:13px">
+        <span style="color:var(--muted)">${label}</span>
+        <span style="font-weight:600;color:${type === 'asset' ? 'var(--green)' : 'var(--red)'}">${fmtInt(val)}</span>
+      </div>
+    `).join('')}
+    <div style="display:flex;justify-content:space-between;padding:.75rem 0 0;font-size:15px;font-weight:700">
+      <span>Net worth</span>
+      <span style="color:${netWorth >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtInt(netWorth)}</span>
+    </div>
+  `;
+}
+
+async function getAISuggestion() {
+  const box = $('ai-suggestion-box');
+  box.style.display = 'block';
+  box.className = 'goal-suggestion loading';
+  box.textContent = 'Getting your personalized suggestion...';
+
+  const s = STATE.snapshot;
+  const { netSavings, totalIncome, totalBills } = calcMonthBudget(STATE.currentMonth);
+  const goal = s?.primary_goal || 'debt';
+
+  const goalLabels = { debt: 'paying down debt', downpayment: 'saving for a down payment', emergency: 'building an emergency fund', invest: 'investing' };
+
+  const totalDebt = ((s?.credit_card_balance || 0) + (s?.student_loan_balance || 0) + (s?.car_loan_balance || 0) + (s?.mortgage_balance || 0) + (s?.other_debt_balance || 0));
+  const totalAssets = ((s?.checking_balance || 0) + (s?.savings_balance || 0) + (s?.investment_balance || 0) + (s?.home_equity || 0));
+
+  const prompt = `My household finances this month:
+- Monthly take-home income: ${fmtInt(totalIncome)}
+- Monthly fixed bills: ${fmtInt(totalBills)}
+- Weekly recurring buckets (daycare, gas, misc, etc.): ${fmtInt(STATE.buckets.reduce((a, b) => a + parseFloat(b.weekly_amount) * 4.3, 0))}
+- Net savings available this month: ${fmtInt(Math.max(0, netSavings))}
+- Total debt: ${fmtInt(totalDebt)} (credit card APR: ${s?.credit_card_apr || 0}%)
+- Total assets/savings: ${fmtInt(totalAssets)}
+- Current primary goal: ${goalLabels[goal]}
+
+What should I do with my ${fmtInt(Math.max(0, netSavings))} in net savings this month? Give me a specific, actionable recommendation.`;
+
+  try {
+    const res = await fetch('/api/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    box.className = 'goal-suggestion';
+    box.textContent = data.suggestion || 'No suggestion returned.';
+
+    // Cache it
+    await sb.from('ai_suggestions').insert({
+      household_id: STATE.householdId,
+      prompt_context: { netSavings, totalDebt, goal },
+      suggestion: data.suggestion
+    });
+  } catch (e) {
+    box.className = 'goal-suggestion';
+    box.textContent = 'Could not reach the AI. Check your connection and try again.';
+  }
+}
+
+function changeGoal() {
+  const goal = prompt('Enter goal: debt, downpayment, emergency, or invest');
+  if (!goal) return;
+  const valid = ['debt','downpayment','emergency','invest'];
+  if (!valid.includes(goal)) return toast('Invalid goal.', 'error');
+  sb.from('financial_snapshot').update({ primary_goal: goal }).eq('household_id', STATE.householdId).then(async () => {
+    await loadAllData();
+    renderGoalsPage();
+    toast('Goal updated.', 'success');
+  });
+}
+
+// ── Settings page ──────────────────────────────────────────
+async function renderSettingsPage() {
+  // Income
+  $('settings-income').innerHTML = STATE.income.map(i => `
+    <div class="item-row">
+      <div><div class="item-name">${i.name}</div><div class="item-meta">${i.frequency} · First pay: ${i.first_pay_date}</div></div>
+      <div class="item-amount">${fmt(i.amount)}</div>
+      <button class="btn-delete" onclick="deleteIncome('${i.id}')">🗑</button>
+    </div>
+  `).join('') || '<div style="color:var(--muted);font-size:13px;padding:.5rem 0">No income sources.</div>';
+
+  // Buckets
+  $('settings-buckets').innerHTML = STATE.buckets.map(b => `
+    <div class="item-row">
+      <div class="item-name">${b.name}</div>
+      <div class="item-meta">${fmt(b.weekly_amount)}/week</div>
+      <div class="item-amount">${fmt(b.weekly_amount * 4.3)}/mo est.</div>
+      <button class="btn-delete" onclick="deleteBucket('${b.id}')">🗑</button>
+    </div>
+  `).join('') || '<div style="color:var(--muted);font-size:13px;padding:.5rem 0">No buckets.</div>';
+
+  // Household / invite
+  const { data: hh } = await sb.from('households').select('*').eq('id', STATE.householdId).single();
+  const { data: invites } = await sb.from('household_invites').select('*').eq('household_id', STATE.householdId).is('used_by', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false });
+  const activeCode = invites?.[0]?.code;
+
+  $('settings-household').innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:.75rem">${hh?.name || 'My Household'}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:.75rem">Share an invite code so your partner can join. Codes expire in 7 days.</div>
+    ${activeCode ? `<div>Active invite code:</div><div class="invite-code">${activeCode}</div>` : ''}
+    <button class="btn-save" onclick="generateInvite()">Generate invite code</button>
+  `;
+}
+
+async function generateInvite() {
+  const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+  await sb.from('household_invites').insert({
+    household_id: STATE.householdId,
+    code,
+    created_by: STATE.user.id,
+  });
+  renderSettingsPage();
+  toast('Invite code generated!', 'success');
+}
+
+function openIncomeModal() {
+  $('income-edit-id').value = '';
+  $('income-name').value = '';
+  $('income-amount').value = '';
+  $('income-freq').value = 'biweekly';
+  $('income-paydate').value = '';
+  openModal('modal-income');
+}
+
+async function saveIncome() {
+  const id = $('income-edit-id').value;
+  const data = {
+    household_id: STATE.householdId,
+    name: $('income-name').value.trim(),
+    amount: parseFloat($('income-amount').value) || 0,
+    frequency: $('income-freq').value,
+    first_pay_date: $('income-paydate').value,
+  };
+  if (!data.name || !data.amount || !data.first_pay_date) return toast('Fill in all fields.', 'error');
+  await sb.from('income_sources').insert(data);
+  await loadAllData();
+  renderSettingsPage();
+  closeModal('modal-income');
+  toast('Income source added.', 'success');
+}
+
+async function deleteIncome(id) {
+  if (!confirm('Remove this income source?')) return;
+  await sb.from('income_sources').update({ is_active: false }).eq('id', id);
+  await loadAllData();
+  renderSettingsPage();
+  toast('Removed.');
+}
+
+function openBucketModal() {
+  $('bucket-edit-id').value = '';
+  $('bucket-name').value = '';
+  $('bucket-amount').value = '';
+  openModal('modal-bucket');
+}
+
+async function saveBucket() {
+  const data = {
+    household_id: STATE.householdId,
+    name: $('bucket-name').value.trim(),
+    weekly_amount: parseFloat($('bucket-amount').value) || 0,
+    sort_order: STATE.buckets.length,
+  };
+  if (!data.name || !data.weekly_amount) return toast('Fill in all fields.', 'error');
+  await sb.from('weekly_buckets').insert(data);
+  await loadAllData();
+  renderSettingsPage();
+  closeModal('modal-bucket');
+  toast('Bucket added.', 'success');
+}
+
+async function deleteBucket(id) {
+  if (!confirm('Remove this bucket?')) return;
+  await sb.from('weekly_buckets').update({ is_active: false }).eq('id', id);
+  await loadAllData();
+  renderSettingsPage();
+  toast('Removed.');
+}
+
+// ── Page navigation ────────────────────────────────────────
+function goPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  $('page-' + page).classList.add('active');
+  event.target.classList.add('active');
+
+  if (page === 'budget') renderBudget();
+  if (page === 'bills') renderBillsPage();
+  if (page === 'goals') renderGoalsPage();
+  if (page === 'settings') renderSettingsPage();
+  if (page === 'dashboard') renderDashboard();
+}
+
+// ── PWA service worker ─────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'clearbudget-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(caches.keys().then(keys =>
+        Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      ));
+      self.clients.claim();
+    });
+    self.addEventListener('fetch', e => {
+      if (e.request.url.includes('/api/')) return;
+      e.respondWith(
+        fetch(e.request).catch(() => caches.match(e.request))
+      );
+    });
+  `;
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  navigator.serviceWorker.register(URL.createObjectURL(blob));
+}
+</script>
+</body>
+</html>
