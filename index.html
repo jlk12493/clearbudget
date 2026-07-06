@@ -6,15 +6,9 @@
 <meta name="theme-color" content="#0f172a">
 <meta name="description" content="Household budget tracker — weekly cash flow, bills, goals">
 <title>ClearBudget</title>
-<link rel="manifest" href="data:application/json,{
-  &quot;name&quot;:&quot;ClearBudget&quot;,
-  &quot;short_name&quot;:&quot;ClearBudget&quot;,
-  &quot;start_url&quot;:&quot;/&quot;,
-  &quot;display&quot;:&quot;standalone&quot;,
-  &quot;background_color&quot;:&quot;#0f172a&quot;,
-  &quot;theme_color&quot;:&quot;#0f172a&quot;,
-  &quot;icons&quot;:[{&quot;src&quot;:&quot;data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2310b981'/><text y='.9em' font-size='75' x='12'>💰</text></svg>&quot;,&quot;sizes&quot;:&quot;any&quot;,&quot;type&quot;:&quot;image/svg+xml&quot;}]
-}">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ClearBudget">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -595,9 +589,10 @@ function authTab(tab) {
 }
 
 function showAuthError(msg) {
-  $('auth-error').textContent = msg;
+  $('auth-error').textContent = msg || 'Something went wrong. Check console for details.';
   $('auth-error').style.display = 'block';
   $('auth-info').style.display = 'none';
+  console.error('Auth error:', msg);
 }
 
 async function doLogin() {
@@ -614,11 +609,12 @@ async function doSignup() {
   const pass = $('s-pass').value;
   if (!name || !email || !pass) return showAuthError('Please fill in all fields.');
   if (pass.length < 6) return showAuthError('Password must be at least 6 characters.');
-  const { error } = await sb.auth.signUp({
+  const { data: signupData, error } = await sb.auth.signUp({
     email, password: pass,
     options: { data: { full_name: name } }
   });
-  if (error) return showAuthError(error.message);
+  console.log('Signup result:', signupData, error);
+  if (error) return showAuthError(error.message || error.status + ': ' + JSON.stringify(error));
   $('auth-info').textContent = 'Account created! Check your email to verify, then sign in.';
   $('auth-info').style.display = 'block';
   $('auth-error').style.display = 'none';
@@ -674,27 +670,34 @@ function showAuthGate() {
 }
 
 async function loadUserData() {
-  // Load profile
-  const { data: profile } = await sb.from('profiles').select('*').eq('id', STATE.user.id).single();
-  STATE.profile = profile;
+  try {
+    let { data: profile, error: pe } = await sb.from('profiles').select('*').eq('id', STATE.user.id).single();
+    if (pe || !profile) {
+      await sb.from('profiles').upsert({ id: STATE.user.id, full_name: STATE.user.user_metadata?.full_name || '' });
+      const res = await sb.from('profiles').select('*').eq('id', STATE.user.id).single();
+      profile = res.data;
+    }
+    STATE.profile = profile;
 
-  if (!profile?.household_id) {
-    // New user — start onboarding
+    if (!profile?.household_id) {
+      showOnboarding();
+      return;
+    }
+
+    STATE.householdId = profile.household_id;
+
+    const inviteCode = STATE.user.user_metadata?.invite_code;
+    if (inviteCode && !profile.household_id) {
+      await applyInviteCode(inviteCode);
+      return;
+    }
+
+    await loadAllData();
+    showMainApp();
+  } catch(err) {
+    console.error('loadUserData error:', err);
     showOnboarding();
-    return;
   }
-
-  STATE.householdId = profile.household_id;
-
-  // Check if invite code pending from join flow
-  const inviteCode = STATE.user.user_metadata?.invite_code;
-  if (inviteCode && !profile.household_id) {
-    await applyInviteCode(inviteCode);
-    return;
-  }
-
-  await loadAllData();
-  showMainApp();
 }
 
 async function applyInviteCode(code) {
@@ -1493,29 +1496,7 @@ function goPage(page) {
 }
 
 // ── PWA service worker ─────────────────────────────────────
-if ('serviceWorker' in navigator) {
-  const swCode = `
-    const CACHE = 'clearbudget-v1';
-    self.addEventListener('install', e => {
-      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])));
-      self.skipWaiting();
-    });
-    self.addEventListener('activate', e => {
-      e.waitUntil(caches.keys().then(keys =>
-        Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-      ));
-      self.clients.claim();
-    });
-    self.addEventListener('fetch', e => {
-      if (e.request.url.includes('/api/')) return;
-      e.respondWith(
-        fetch(e.request).catch(() => caches.match(e.request))
-      );
-    });
-  `;
-  const blob = new Blob([swCode], { type: 'application/javascript' });
-  navigator.serviceWorker.register(URL.createObjectURL(blob));
-}
+// PWA service worker disabled in workers.dev environment
 </script>
 </body>
 </html>
