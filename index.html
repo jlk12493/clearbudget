@@ -666,6 +666,15 @@ sb.auth.onAuthStateChange(async (event, session) => {
   }
 });
 
+// Fallback: getUser in case session isn't in localStorage but token is valid
+(async () => {
+  const { data: { user } } = await sb.auth.getUser();
+  if (user && !STATE.user) {
+    STATE.user = user;
+    await loadUserData();
+  }
+})();
+
 function showAuthGate() {
   $('auth-screen').style.display = 'flex';
   $('onboarding').style.display = 'none';
